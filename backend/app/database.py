@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 from dotenv import load_dotenv
 import os
 
@@ -19,3 +19,11 @@ session_local = sessionmaker(
 
 class Base(DeclarativeBase):
     pass
+
+def get_db():
+    db = session_local()
+
+    try:
+        yield db
+    finally:
+        db.close()
