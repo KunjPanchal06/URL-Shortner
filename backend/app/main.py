@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Link
 from sqlalchemy.exc import IntegrityError
+from app.database import redis_client
 
 app = FastAPI()
 
@@ -61,13 +62,32 @@ def create_short_url(request: ShortenURLRequest, db: Session = Depends(get_db)):
         short_url = f"http://127.0.0.1:8000/{slug}"
     )
 
+CACHE_TTL = 3600
+
 @app.get('/{slug}')
 def redirect_url(slug: str, db:Session = Depends(get_db)):
-    link = db.query(Link).filter(Link.slug == slug).first()
-    if link is None:
-        raise HTTPException(status_code=404, detail="URL Not Found")
-    
-    return RedirectResponse(
-        url = link.original_url,
-        status_code = status.HTTP_302_FOUND
-    )
+    cached_url = redis_client.get(slug)
+
+    if cached_url:
+        return RedirectResponse(
+            url=cached_url,
+            status_code=status.HTTP_302_FOUND
+        )
+    else:
+        link = db.query(Link).filter(Link.slug==slug).first()
+        if link is None:
+            raise HTTPException(
+                status_code = status.HTTP_404_NOT_FOUND,
+                detail= "URL Not Found"
+            )
+        
+        redis_client.set(
+            name = slug,
+            value = link.original_url,
+            ex = CACHE_TTL
+        )
+
+        return RedirectResponse(
+            url = link.original_url,
+            status_code=status.HTTP_302_FOUND
+        )
